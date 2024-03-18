@@ -1,1 +1,77 @@
+// Apex class to handle the integration with Open Weather API
+public class OpenWeatherForCityObj {
 
+    // Asynchronous method to make callouts to Open Weather API
+    @future(callout=true)
+    public static void updateCitiesWithWeather(Set<Id> cityIds) {
+        // Query City__c records based on the provided set of IDs
+        List<City__c> cities = [SELECT Id, Name, Latitude__c, Longitude__c, Country__c, Weather__c FROM City__c WHERE Id IN :cityIds];
+        
+        // API key for Open Weather Map API
+        String key = 'YOUR_API_KEY';
+        
+        // Try-catch block to handle any exceptions during the API callout
+        try{
+            // Iterate over each city record to make individual API callouts
+            for (City__c city : cities) {
+                // Reset the By_Pass__c flag to false for processing
+                city.By_Pass__c = false;
+                
+                // Create a new HTTP request for the Open Weather API
+                HttpRequest req = new HttpRequest();
+                req.setEndpoint('callout:OpenWeatherMapAPI/data/2.5/weather?q=' + city.Name + '&appid=' + key);
+                req.setMethod('GET');
+                
+                // Send the HTTP request and capture the response
+                HttpResponse res = new Http().send(req);
+                
+                // Check if the response status code is 200 (OK)
+                if (res.getStatusCode() == 200) {
+                    // Deserialize the JSON response body
+                    Map<String, Object> resBody = (Map<String, Object>) JSON.deserializeUntyped(res.getBody());
+                    
+                    // Extract the city name from the API response
+                    String cityNameFromResponse = (String) resBody.get('name');
+                    
+                    // Verify if the API response city name matches the record's city name
+                    if (String.isNotBlank(cityNameFromResponse) && cityNameFromResponse.equalsIgnoreCase(city.Name)) {
+                        
+                        // Extract latitude and longitude from the API response
+                        Map<String, Object> getLatLon = (Map<String, Object>) resBody.get('coord');
+                        Object lon = getLatLon.get('lon');
+                        Object lat = getLatLon.get('lat');
+                        
+                        // Set the By_Pass__c flag to true to avoid reprocessing
+                        city.By_Pass__c = true;
+                        
+                        // Update the city record with latitude and longitude
+                        city.Latitude__c = String.valueOf(lat);
+                        city.Longitude__c = String.valueOf(lon);
+                        
+                        // Extract country from the API response
+                        Map<String, Object> getCountry = (Map<String, Object>) resBody.get('sys');
+                        Object country = getCountry.get('country');
+                        city.Country__c = String.valueOf(country);
+                        
+                        // Extract weather description from the API response
+                        List<Object> getWeather = (List<Object>) resBody.get('weather');
+                        for (Object weather : getWeather) {
+                            Map<String, Object> weatherMap = (Map<String, Object>) weather;
+                            String weatherDescription = (String) weatherMap.get('description');
+                            city.Weather__c = weatherDescription;
+                        }
+                        
+                        // Update the city record in Salesforce
+                        update city;
+                    } else {
+                        // Log a message if the city name is not found in the API response
+                        System.debug('City name not found in API response for ' + city.Name);
+                    }
+                }
+            }
+        } catch (exception error){
+            // Log the exception message if an error occurs
+            System.debug('An exception occurred: ' + error.getMessage());
+        }
+    }
+}
