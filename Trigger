@@ -1,1 +1,20 @@
+// Trigger to handle the execution of the OpenWeatherForCityObj class
+trigger WeatherAPITrigger on City__c (before insert, after insert, before update ) {
+    // Set to store the IDs of city records
+    Set<Id> cityIds = new Set<Id>();
+
+    // Loop through each city record in the trigger context
+    for (City__c city : Trigger.new) {
+        
+        // Check if the By_Pass__c flag is false before adding to the set
+        if (city.By_Pass__c == false) {
+            cityIds.add(city.Id);
+        }
+    }
+
+    // If the set of city IDs is not empty, call the updateCitiesWithWeather method
+    if (!cityIds.isEmpty()) {
+        OpenWeatherForCityObj.updateCitiesWithWeather(cityIds);
+    }
+}
 
